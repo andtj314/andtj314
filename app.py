@@ -1,4 +1,3 @@
-
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -16,8 +15,6 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📝 2회고사 대비 서·논술형 자동 채점기")
-st.caption("1~3세트 문항을 의미 중심으로 판정하는 규칙 기반 채점 도구")
 
 
 # =========================================================
@@ -695,111 +692,232 @@ MODEL_ANSWERS = {
 # =========================================================
 # 화면 구성
 # =========================================================
-with st.sidebar:
-    st.header("채점 설정")
-    set_name = st.selectbox("세트 선택", ["1세트", "2세트", "3세트"])
-    question_name = st.selectbox("문항 선택", ["문항 1", "문항 2", "문항 3"])
-    st.divider()
-    st.markdown(
-        """
-        **판정 원칙**
-        - 용어가 없어도 방법의 의미가 구현되면 인정
-        - 방법을 직접 표기했다면 해당 특성이 실제 문장에 있어야 인정
-        - 다른 개념의 특성을 섞으면 오개념 처리
-        - 요구된 결론 방향이 분명해야 통과
-        """
+# =========================================================
+# 화면 구성: 학습지형 단계별 인터페이스
+# =========================================================
+SET_INFO = {
+    "1세트": {
+        "title": "💡 [실전 적용 1] 과제 난이도와 사회적 촉진/억제",
+        "guide": "[기지] 사회적 촉진과 억제를 일상생활에 어떻게 적용할 수 있을까요?",
+        "source": "[전문가] 비교적 쉬운 취미 생활이나 큰 노력을 들일 필요가 없는 과제를 할 때는 커피숍이나 도서관에서 하거나 공부 모임을 만드는 것이 효율적일 수 있습니다. 반대로 지나치게 어렵거나 도전이 필요한 과제는 차분하게 혼자 집중하는 시간을 가지는 것이 좋습니다.",
+        "table": [
+            ["㉠", "공부 모임 등 여럿이 함께함", "사회적 촉진"],
+            ["어려운 과제", "㉡", "㉢"],
+        ],
+        "headers": ["과제의 특성", "환경", "현상"],
+    },
+    "2세트": {
+        "title": "⚡ [실전 적용 2] 정전기의 특성과 안전성",
+        "guide": "[기지] 정전기는 왜 전압이 높아도 위험하지 않을까요?",
+        "source": "[전문가] 우리가 일상생활에서 사용하는 전기는 흐르는 물과 같지만, 정전기는 높은 곳에 고여 있는 물과 같습니다. 정전기는 전하가 이동하지 않고 머물러 있으므로 전압은 매우 높아도 위험하지 않습니다.",
+        "table": [
+            ["정전기의 비유", "㉠"],
+            ["전하의 상태", "㉡"],
+            ["위험성", "㉢"],
+        ],
+        "headers": ["구분", "내용"],
+    },
+    "3세트": {
+        "title": "🎨 [실전 적용 3] 인공지능 그림과 예술의 가치",
+        "guide": "[기지] 인공지능이 그린 그림을 예술로 볼 수 있을까요?",
+        "source": "[전문가] 인간의 예술에는 작가의 경험과 관점, 환경이 담겨 감동을 줍니다. 인공지능 그림은 감정이나 독자적인 철학, 이야기가 없어 예술로 보기 어렵습니다. 그러나 기존 미술계에 큰 변화를 가져왔고 예술의 범주를 확장할 수 있다는 점에서 상징적 가치가 있습니다.",
+        "table": [
+            ["인공지능의 완벽한 수행 비유", "㉠"],
+            ["예술로 볼 수 있는가", "㉡"],
+            ["예술로서의 가치", "㉢"],
+        ],
+        "headers": ["구분", "내용"],
+    },
+}
+
+QUESTION_LABELS = {
+    "문항 1": "📝 1번 빈칸 채우기",
+    "문항 2": "📄 2번 설명문 쓰기",
+    "문항 3": "🎬 3번 영상 기획",
+}
+
+st.markdown(
+    """
+    <style>
+    .block-container {padding-top: 2rem; padding-bottom: 3rem; max-width: 1500px;}
+    h1, h2, h3 {letter-spacing: -0.02em;}
+    .lesson-title {font-size: 1.55rem; font-weight: 800; color: #172033; margin-bottom: 0.85rem;}
+    .source-box {background: #eaf2ff; border-radius: 8px; padding: 1rem 1.1rem; line-height: 1.75; margin-bottom: 0.8rem;}
+    .question-card {border: 1px solid #d8dee8; border-radius: 8px; padding: 0.8rem 0.9rem 0.4rem; margin-top: 0.8rem;}
+    .model-answer {border: 1px solid #d7dce5; border-radius: 7px; padding: 0.6rem 0.9rem; margin-top: 0.65rem;}
+    div[data-testid="stTextInput"] input {background: #f3f5f8;}
+    div[data-testid="stTextArea"] textarea {background: #f7f8fa;}
+    div[data-testid="stButton"] button {border-radius: 6px; font-weight: 700;}
+    .criterion-ok {background:#eaf9ef; border-left:4px solid #24b45a; padding:0.65rem 0.8rem; border-radius:5px; margin:0.45rem 0;}
+    .criterion-bad {background:#fff1f1; border-left:4px solid #e14b4b; padding:0.65rem 0.8rem; border-radius:5px; margin:0.45rem 0;}
+    .criterion-info {background:#eef5ff; border-left:4px solid #4b82d9; padding:0.65rem 0.8rem; border-radius:5px; margin:0.45rem 0;}
+    table {width:100%; border-collapse:collapse; margin-top:0.7rem;}
+    th {background:#dfe7f2; text-align:center; padding:0.7rem; border:1px solid #bac8dc;}
+    td {text-align:center; padding:0.72rem; border:1px solid #c9d4e3;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def render_table(headers: List[str], rows: List[List[str]]) -> None:
+    header_html = "".join(f"<th>{h}</th>" for h in headers)
+    rows_html = "".join(
+        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>"
+        for row in rows
     )
+    st.markdown(f"<table><thead><tr>{header_html}</tr></thead><tbody>{rows_html}</tbody></table>", unsafe_allow_html=True)
 
-tab_grade, tab_models, tab_logic = st.tabs(["자동 채점", "모범 답안", "채점 로직 설명"])
 
-with tab_grade:
-    st.subheader(f"{set_name} · {question_name}")
-
-    if question_name == "문항 1":
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            a1 = st.text_area("㉠ 답안", height=120)
-        with c2:
-            a2 = st.text_area("㉡ 답안", height=120)
-        with c3:
-            a3 = st.text_area("㉢ 답안", height=120)
-
-        if st.button("채점하기", type="primary"):
-            if set_name == "1세트":
-                result_to_markdown(grade_s1_q1(a1, a2, a3))
-            elif set_name == "2세트":
-                result_to_markdown(grade_s2_q1(a1, a2, a3))
-            else:
-                result_to_markdown(grade_s3_q1(a1, a2, a3))
-
-    elif question_name == "문항 2":
-        s1 = st.text_area("(1) 문장", height=150)
-        s2 = st.text_area("(2) 문장", height=150)
-
-        if st.button("채점하기", type="primary"):
-            if set_name == "1세트":
-                result_to_markdown(grade_s1_q2(s1, s2))
-            elif set_name == "2세트":
-                result_to_markdown(grade_s2_q2(s1, s2))
-            else:
-                result_to_markdown(grade_s3_q2(s1, s2))
-
+def render_feedback(result: GradeResult, labels: Optional[List[str]] = None) -> None:
+    if result.passed:
+        st.success("🎉 모든 조건을 충족했어요!")
     else:
-        c1, c2 = st.columns(2)
-        with c1:
-            visual = st.text_area("시각 요소(Ⓐ)", height=130)
-            visual_effect = st.text_area("시각 요소의 효과", height=130)
-        with c2:
-            audio = st.text_area("청각 요소(Ⓑ)", height=130)
-            audio_effect = st.text_area("청각 요소의 효과", height=130)
+        st.warning(f"✏️ {result.score}/{result.max_score}개의 핵심 조건을 충족했어요. 아래 피드백을 확인해 보세요.")
 
-        if st.button("채점하기", type="primary"):
-            if set_name == "1세트":
-                result_to_markdown(grade_s1_q3(visual, visual_effect, audio, audio_effect))
-            elif set_name == "2세트":
-                result_to_markdown(grade_s2_q3(visual, visual_effect, audio, audio_effect))
-            else:
-                result_to_markdown(grade_s3_q3(visual, visual_effect, audio, audio_effect))
+    if labels:
+        for index, label in enumerate(labels):
+            if index < result.score and not result.misconceptions:
+                st.markdown(f'<div class="criterion-ok">✅ {label}</div>', unsafe_allow_html=True)
+    for item in result.matched:
+        st.markdown(f'<div class="criterion-ok">✅ {item}</div>', unsafe_allow_html=True)
+    for item in result.missing:
+        st.markdown(f'<div class="criterion-bad">🔎 보완: {item}</div>', unsafe_allow_html=True)
+    for item in result.misconceptions:
+        st.markdown(f'<div class="criterion-bad">⚠️ 오개념·방향 오류: {item}</div>', unsafe_allow_html=True)
+    for item in result.feedback:
+        st.markdown(f'<div class="criterion-info">💬 {item}</div>', unsafe_allow_html=True)
 
-with tab_models:
-    st.subheader(f"{set_name} · {question_name} 모범 답안")
+
+def render_model_answers(set_name: str, question_name: str) -> None:
     models = MODEL_ANSWERS[set_name][question_name]
-    if isinstance(models, dict):
-        st.write("선택 가능한 설명 방법 조합별 모범 답안입니다.")
-        for label, answers in models.items():
-            with st.expander(label, expanded=True):
+    with st.expander("📖 모범 답안 보기", expanded=False):
+        if isinstance(models, dict):
+            st.caption("선택 가능한 설명 방법 조합별 모범 답안")
+            for label, answers in models.items():
+                st.markdown(f"**{label}**")
                 for answer in answers:
                     st.markdown(f"- {answer}")
-    else:
-        for answer in models:
-            st.markdown(f"- {answer}")
+        else:
+            for answer in models:
+                st.markdown(f"- {answer}")
 
-with tab_logic:
-    st.subheader("채점 로직 핵심")
+
+# 세트 선택은 화면 상단에 작게 배치
+left, right = st.columns([5, 1])
+with right:
+    set_name = st.selectbox("세트", ["1세트", "2세트", "3세트"], label_visibility="collapsed")
+
+info = SET_INFO[set_name]
+st.markdown(f'<div class="lesson-title">{info["title"]}</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="source-box"><b>{info["guide"]}</b><br><br>{info["source"]}</div>',
+    unsafe_allow_html=True,
+)
+
+if "question_name" not in st.session_state:
+    st.session_state.question_name = "문항 1"
+
+step_cols = st.columns(3)
+for idx, q_name in enumerate(["문항 1", "문항 2", "문항 3"]):
+    with step_cols[idx]:
+        active = st.session_state.question_name == q_name
+        if st.button(
+            QUESTION_LABELS[q_name],
+            key=f"step_{set_name}_{q_name}",
+            type="primary" if active else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.question_name = q_name
+            st.rerun()
+
+st.divider()
+question_name = st.session_state.question_name
+
+if question_name == "문항 1":
+    st.markdown("**[서·논술형 1]** 윗글을 요약하여 표로 정리하였다. 빈칸 ㉠~㉢에 들어갈 내용을 찾아 쓰시오.")
+    render_table(info["headers"], info["table"])
+
+    with st.container(border=True):
+        a1 = st.text_input("(1) ㉠", key=f"{set_name}_q1_a1", placeholder="답을 입력하세요")
+        a2 = st.text_input("(2) ㉡", key=f"{set_name}_q1_a2", placeholder="답을 입력하세요")
+        a3 = st.text_input("(3) ㉢", key=f"{set_name}_q1_a3", placeholder="답을 입력하세요")
+        submitted = st.button("제출하고 피드백 받기", key=f"submit_{set_name}_q1")
+
+    if submitted:
+        if set_name == "1세트":
+            result = grade_s1_q1(a1, a2, a3)
+        elif set_name == "2세트":
+            result = grade_s2_q1(a1, a2, a3)
+        else:
+            result = grade_s3_q1(a1, a2, a3)
+        render_feedback(result)
+        render_model_answers(set_name, question_name)
+
+elif question_name == "문항 2":
+    st.markdown(
+        "**[서·논술형 2]** 제시문의 핵심 내용을 활용하여 두 문장으로 설명문을 완성하시오. "
+        "서로 다른 설명 방법을 사용하되, 방법의 명칭보다 그 특성이 문장에 실제로 드러나야 합니다."
+    )
+
+    with st.container(border=True):
+        method_options = ["표기하지 않음", "정의", "예시", "인과", "분석", "비교와 대조", "분류와 구분"]
+        c1, c2 = st.columns(2)
+        with c1:
+            method1 = st.selectbox("(1) 선택한 설명 방법", method_options, key=f"{set_name}_q2_m1")
+            s1 = st.text_area("(1) 문장", key=f"{set_name}_q2_s1", height=130, placeholder="첫 번째 설명문을 입력하세요")
+        with c2:
+            method2 = st.selectbox("(2) 선택한 설명 방법", method_options, key=f"{set_name}_q2_m2")
+            s2 = st.text_area("(2) 문장", key=f"{set_name}_q2_s2", height=130, placeholder="두 번째 설명문을 입력하세요")
+
+        # 선택한 방법을 답안 끝에 붙여 기존 검증 로직에 전달
+        evaluated_s1 = s1 if method1 == "표기하지 않음" else f"{s1} ({method1})"
+        evaluated_s2 = s2 if method2 == "표기하지 않음" else f"{s2} ({method2})"
+        submitted = st.button("제출하고 피드백 받기", key=f"submit_{set_name}_q2")
+
+    if submitted:
+        if set_name == "1세트":
+            result = grade_s1_q2(evaluated_s1, evaluated_s2)
+        elif set_name == "2세트":
+            result = grade_s2_q2(evaluated_s1, evaluated_s2)
+        else:
+            result = grade_s3_q2(evaluated_s1, evaluated_s2)
+        render_feedback(result)
+        render_model_answers(set_name, question_name)
+
+else:
+    st.markdown(
+        "**[서·논술형 3]** 제시문의 핵심 개념이 잘 드러나도록 영상의 시각 요소와 청각 요소를 기획하고, 각각의 효과를 쓰시오."
+    )
+
+    with st.container(border=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            visual = st.text_area("시각 요소(Ⓐ)", key=f"{set_name}_q3_visual", height=125, placeholder="화면에 나타날 장면을 구체적으로 쓰세요")
+            visual_effect = st.text_area("시각 요소의 효과", key=f"{set_name}_q3_visual_effect", height=125, placeholder="이 장면이 핵심 개념을 어떻게 전달하는지 쓰세요")
+        with c2:
+            audio = st.text_area("청각 요소(Ⓑ)", key=f"{set_name}_q3_audio", height=125, placeholder="배경음, 효과음, 말소리 등을 쓰세요")
+            audio_effect = st.text_area("청각 요소의 효과", key=f"{set_name}_q3_audio_effect", height=125, placeholder="이 소리가 핵심 개념을 어떻게 강조하는지 쓰세요")
+        submitted = st.button("제출하고 피드백 받기", key=f"submit_{set_name}_q3")
+
+    if submitted:
+        if set_name == "1세트":
+            result = grade_s1_q3(visual, visual_effect, audio, audio_effect)
+        elif set_name == "2세트":
+            result = grade_s2_q3(visual, visual_effect, audio, audio_effect)
+        else:
+            result = grade_s3_q3(visual, visual_effect, audio, audio_effect)
+        render_feedback(result)
+        render_model_answers(set_name, question_name)
+
+st.divider()
+with st.expander("교사용 채점 원칙 확인"):
     st.markdown(
         """
-        1. **의미 중심 통과**  
-           정확한 용어가 없어도 핵심 의미를 나타내는 동의 표현이 있으면 인정합니다.
-
-        2. **설명 방법 검증**  
-           학생이 `(인과)`, `(비교와 대조)`처럼 방법을 직접 적었을 때는 단순 표기만으로 인정하지 않습니다.  
-           - 인과: 원인과 결과가 모두 있어야 함  
-           - 비교와 대조: 두 대상·상황과 차이 관계가 있어야 함  
-           - 예시: 구체적 사례가 있어야 함  
-           - 정의: 대상의 뜻이나 개념을 밝혀야 함  
-           - 분석: 둘 이상의 요소나 부분으로 나누어 설명해야 함  
-           - 분류와 구분: 일정한 기준으로 대상을 나누어야 함
-
-        3. **오개념 교차 차단**  
-           쉬운 과제에 혼자 집중을 연결하거나, 정전기에 흐르는 물을 연결하거나, AI 그림에 인간의 감정·삶의 경험을 부여하면 오답으로 처리합니다.
-
-        4. **결론 방향 확인**  
-           단순 키워드 나열이 아니라 문항이 요구한 결론이 분명해야 합니다.  
-           - 1세트: 쉬운 과제는 함께, 어려운 과제는 혼자  
-           - 2세트: 전하가 머물기 때문에 위험하지 않음  
-           - 3세트: 예술로 보기는 어렵지만 상징적 가치는 있음
+        - 허용한 설명 방법의 의미가 답안에 담기면 용어를 쓰지 않아도 인정합니다.
+        - 특정 설명 방법을 선택한 경우, 그 방법의 특성이 실제 문장에 드러나야 합니다.
+        - 한 개념의 특성을 다른 개념의 설명에 적용하면 오개념으로 처리합니다.
+        - 문항이 요구한 결론 방향이 분명하게 제시되어야 최종 통과합니다.
+        - 규칙 기반 판정이므로 창의적이거나 중의적인 답안은 교사가 최종 확인해야 합니다.
         """
-    )
-    st.warning(
-        "이 앱은 규칙 기반 자동 채점기입니다. 표현이 매우 창의적이거나 중의적인 답안은 교사의 최종 확인이 필요합니다."
     )
